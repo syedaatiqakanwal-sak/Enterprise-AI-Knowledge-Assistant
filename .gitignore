@@ -32,5 +32,12 @@ Thumbs.db
 
 # Logs / temp
 *.log
+logs/
+backend/logs/
 tmp/
 temp/
+
+# Python virtualenvs
+.venv/
+venv/
+backend/.venv/

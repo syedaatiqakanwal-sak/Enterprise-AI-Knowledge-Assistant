@@ -4,19 +4,33 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: ai_backend
+    restart: unless-stopped
     volumes:
       - ./backend:/app
+      - backend_logs:/app/logs
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     env_file:
       - .env
     depends_on:
-      - postgres
-      - mongodb
-      - qdrant
-      - redis
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
     networks:
       - ai_network
+    # Dev override: enable reload via compose command when iterating locally
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
   frontend:
     build:
@@ -43,6 +57,11 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     networks:
       - ai_network
 
@@ -76,6 +95,11 @@ services:
     container_name: ai_redis
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     networks:
       - ai_network
 
@@ -87,3 +111,4 @@ volumes:
   postgres_data:
   mongodb_data:
   qdrant_data:
+  backend_logs:
