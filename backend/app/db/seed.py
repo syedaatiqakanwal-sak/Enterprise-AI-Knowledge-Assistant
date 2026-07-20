@@ -28,6 +28,18 @@ DEFAULT_PERMISSIONS: list[tuple[str, str, str, str, str]] = [
     ("documents:read", "Read documents", "documents", "read", "View company documents"),
     ("documents:write", "Write documents", "documents", "write", "Upload or edit documents"),
     ("documents:delete", "Delete documents", "documents", "delete", "Remove documents"),
+    ("chat:read", "Read chats", "chat", "read", "View AI chat history"),
+    ("chat:write", "Write chats", "chat", "write", "Ask the knowledge assistant"),
+    ("ocr:read", "Read OCR", "ocr", "read", "View OCR results"),
+    ("ocr:write", "Write OCR", "ocr", "write", "Run OCR extraction"),
+    ("vision:read", "Read vision", "vision", "read", "View vision analysis"),
+    ("vision:write", "Write vision", "vision", "write", "Run vision / YOLO analysis"),
+    ("meetings:read", "Read meetings", "meetings", "read", "View meeting intelligence"),
+    ("meetings:write", "Write meetings", "meetings", "write", "Upload and process meetings"),
+    ("agents:read", "Read agents", "agents", "read", "View agent sessions, tasks, workflows"),
+    ("agents:write", "Write agents", "agents", "write", "Run agents and manage workflows"),
+    ("analytics:read", "Read analytics", "analytics", "read", "View analytics and AI observability"),
+    ("analytics:export", "Export analytics", "analytics", "export", "Export analytics reports"),
     ("admin:all", "Full admin", "admin", "all", "Unrestricted administrative access"),
 ]
 
@@ -37,10 +49,31 @@ ROLE_PERMISSION_MAP: dict[str, list[str]] = {
         "users:read",
         "documents:read",
         "documents:write",
+        "chat:read",
+        "chat:write",
+        "ocr:read",
+        "ocr:write",
+        "vision:read",
+        "vision:write",
+        "meetings:read",
+        "meetings:write",
+        "agents:read",
+        "agents:write",
         "roles:read",
     ],
     RoleName.EMPLOYEE.value: [
         "documents:read",
+        "documents:write",
+        "chat:read",
+        "chat:write",
+        "ocr:read",
+        "ocr:write",
+        "vision:read",
+        "vision:write",
+        "meetings:read",
+        "meetings:write",
+        "agents:read",
+        "agents:write",
         "users:read",
     ],
 }
@@ -88,6 +121,9 @@ async def seed_rbac(session: AsyncSession) -> None:
                 logger.info("Granted %s -> %s", code, role_name)
 
     await _seed_admin_if_configured(session)
+    from app.services.tenancy_bootstrap import ensure_default_tenant
+
+    await ensure_default_tenant(session)
     await session.commit()
 
 

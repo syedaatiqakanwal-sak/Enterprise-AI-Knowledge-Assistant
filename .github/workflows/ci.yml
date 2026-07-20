@@ -1,0 +1,157 @@
+name: CI — Lint, Test, Build, Scan, Push
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+
+jobs:
+  backend:
+    name: Backend lint & test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: admin_password
+          POSTGRES_DB: enterprise_ai
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U admin -d enterprise_ai"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7.2-alpine
+        ports: ["6379:6379"]
+      mongo:
+        image: mongo:7.0
+        env:
+          MONGO_INITDB_ROOT_USERNAME: admin
+          MONGO_INITDB_ROOT_PASSWORD: admin_password
+        ports: ["27017:27017"]
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt ruff==0.6.9
+      - name: Lint
+        run: ruff check app || true
+      - name: Test
+        env:
+          ENVIRONMENT: testing
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          DATABASE_URL: postgresql+asyncpg://admin:admin_password@localhost:5432/enterprise_ai
+          REDIS_URL: redis://localhost:6379/0
+          MONGO_URL: mongodb://admin:admin_password@localhost:27017
+          POSTGRES_HOST: localhost
+          REDIS_HOST: localhost
+          MONGO_HOST: localhost
+          QDRANT_HOST: localhost
+          LLM_PROVIDER: mock
+          EMBEDDING_PROVIDER: mock
+          AGENT_PROVIDER: mock
+        run: pytest -q --tb=short
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  docker:
+    name: Docker build & security scan
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: false
+          load: true
+          tags: eai-backend:ci
+      - name: Build frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: false
+          load: true
+          tags: eai-frontend:ci
+      - name: Build worker
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.worker
+          push: false
+          load: true
+          tags: eai-worker:ci
+      - name: Trivy scan backend
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: eai-backend:ci
+          format: table
+          exit-code: "0"
+          severity: CRITICAL,HIGH
+      - name: Push images (main only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          TAG=${GITHUB_SHA::12}
+          for name in backend frontend worker; do
+            SRC=eai-${name}:ci
+            DST=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/eai-${name}:${TAG}
+            docker tag $SRC $DST
+            docker tag $SRC ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/eai-${name}:latest
+            docker push $DST
+            docker push ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/eai-${name}:latest
+          done
+
+  deploy-placeholder:
+    name: Deploy placeholder
+    runs-on: ubuntu-latest
+    needs: [docker]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Placeholder deploy
+        run: |
+          echo "Deploy step placeholder — configure kubectl / helm / cloud provider here."
+          echo "Example: kubectl apply -k k8s/overlays/production"
+          echo "Cluster credentials should come from GitHub Environments secrets."

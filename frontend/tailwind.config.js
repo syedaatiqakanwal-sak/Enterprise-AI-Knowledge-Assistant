@@ -1,22 +1,24 @@
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+export default {
   darkMode: ["class"],
-  content: [
-    './pages/**/*.{ts,tsx}',
-    './components/**/*.{ts,tsx}',
-    './app/**/*.{ts,tsx}',
-    './src/**/*.{ts,tsx}',
-  ],
-  prefix: "",
+  content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     container: {
       center: true,
-      padding: "2rem",
-      screens: {
-        "2xl": "1400px",
-      },
+      padding: "1.5rem",
+      screens: { "2xl": "1400px" },
     },
+    // 8px spacing system (Tailwind default already maps to 4px units;
+    // document intentional scale: 2=8, 3=12, 4=16, 6=24, 8=32)
     extend: {
+      fontFamily: {
+        sans: ['"DM Sans"', "system-ui", "sans-serif"],
+        display: ['"Sora"', "system-ui", "sans-serif"],
+        mono: ['"JetBrains Mono"', "ui-monospace", "monospace"],
+      },
+      fontSize: {
+        "2xs": ["0.6875rem", { lineHeight: "1rem" }],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -35,6 +37,14 @@ module.exports = {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
         },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
         muted: {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
@@ -51,11 +61,46 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar))",
+          foreground: "hsl(var(--sidebar-foreground))",
+          muted: "hsl(var(--sidebar-muted))",
+          border: "hsl(var(--sidebar-border))",
+          accent: "hsl(var(--sidebar-accent))",
+          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
+        },
+        brand: {
+          DEFAULT: "#8B5CF6",
+          soft: "#A78BFA",
+          deep: "#7C3AED",
+        },
+        surface: {
+          DEFAULT: "#0B0E14",
+          card: "#111827",
+          elevated: "#1a2234",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        xl: "calc(var(--radius) + 4px)",
+      },
+      boxShadow: {
+        glow: "0 0 0 1px rgba(139, 92, 246, 0.15), 0 8px 32px -8px rgba(139, 92, 246, 0.35)",
+        soft: "0 1px 2px rgba(0,0,0,0.24), 0 8px 24px rgba(0,0,0,0.28)",
+      },
+      backgroundImage: {
+        "hero-glow":
+          "radial-gradient(ellipse 80% 50% at 50% -20%, rgba(139, 92, 246, 0.28), transparent)",
+        "grid-fade":
+          "linear-gradient(to right, rgba(167,139,250,0.05) 1px, transparent 1px), linear-gradient(to bottom, rgba(167,139,250,0.05) 1px, transparent 1px)",
+      },
+      backgroundSize: {
+        grid: "48px 48px",
+      },
+      transitionTimingFunction: {
+        premium: "cubic-bezier(0.22, 1, 0.36, 1)",
       },
       keyframes: {
         "accordion-down": {
@@ -66,12 +111,32 @@ module.exports = {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        shimmer: {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(100%)" },
+        },
+        "fade-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+        "slide-up": {
+          from: { opacity: "0", transform: "translateY(8px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        "pulse-soft": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.65" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        shimmer: "shimmer 1.6s ease-in-out infinite",
+        "fade-in": "fade-in 0.25s ease-out",
+        "slide-up": "slide-up 0.35s cubic-bezier(0.22, 1, 0.36, 1)",
+        "pulse-soft": "pulse-soft 1.6s ease-in-out infinite",
       },
     },
   },
   plugins: [require("tailwindcss-animate")],
-}
+};

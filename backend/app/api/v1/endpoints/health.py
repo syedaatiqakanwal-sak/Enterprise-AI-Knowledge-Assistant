@@ -22,7 +22,7 @@ router = APIRouter()
     summary="Versioned health check",
     description=(
         "Returns backend status plus live probes for PostgreSQL, MongoDB, "
-        "and Redis, along with version and environment."
+        "Redis, and Qdrant, along with version and environment."
     ),
 )
 async def api_health() -> HealthResponse:

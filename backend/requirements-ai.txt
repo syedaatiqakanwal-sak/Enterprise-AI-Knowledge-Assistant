@@ -1,16 +1,52 @@
 # =============================================================================
-# AI / ML dependencies — install when implementing AI modules (not Module 2A)
-# pip install -r requirements-ai.txt
+# AI / ML dependencies — Module 6 RAG (+ later modules)
+# Install:  pip install -r requirements-ai.txt
 # =============================================================================
-beanie==1.26.0
+
+# Vector DB
 qdrant-client==1.9.1
+
+# LangChain core (RAG orchestration)
 langchain==0.2.5
 langchain-community==0.2.5
+langchain-text-splitters==0.2.2
 langchain-openai==0.1.9
+langchain-google-genai==1.0.6
+
+# Embeddings
 sentence-transformers==3.0.1
 torch==2.3.1
 transformers==4.41.2
-openai-whisper==20231117
-opencv-python-headless==4.10.0.82
-paddleocr==2.7.3
-ultralytics==8.2.32
+
+# Document parsers (Module 6 — no OCR)
+pypdf==4.2.0
+python-docx==1.1.2
+python-pptx==0.6.23
+openpyxl==3.1.5
+
+# LLM SDKs (provider abstraction)
+openai==1.35.3
+google-generativeai==0.7.1
+anthropic==0.28.1
+httpx==0.27.0
+
+# Mongo ODM (conversation memory)
+beanie==1.26.0
+
+# Streaming helpers
+sse-starlette==2.1.0
+
+# -----------------------------------------------------------------------------
+# Module 7 — OCR / Vision (install when enabling real engines)
+# opencv-python-headless==4.10.0.82
+# paddleocr==2.7.3
+# easyocr==1.7.1
+# ultralytics==8.2.32
+# -----------------------------------------------------------------------------
+# Module 8 — Meeting Intelligence (Whisper + pyannote; FFmpeg required on PATH)
+# openai-whisper==20231117
+# pyannote.audio==3.1.1
+# -----------------------------------------------------------------------------
+# Module 9 — Agent Platform (optional LangGraph for graph orchestration)
+# langgraph==0.1.19
+# -----------------------------------------------------------------------------

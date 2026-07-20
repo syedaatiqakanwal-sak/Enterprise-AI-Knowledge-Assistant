@@ -88,7 +88,7 @@ class EmailService:
         text = (
             f"We received a password reset request.\n\n"
             f"Open: {link}\n\nOr use this token: {token}\n\n"
-            f"Expires in {settings.PASSWORD_RESET_EXPIRE_HOURS} hour(s). "
+            f"Expires in {settings.PASSWORD_RESET_EXPIRE_MINUTES} minute(s). "
             "If you did not request this, ignore this email."
         )
         html = (

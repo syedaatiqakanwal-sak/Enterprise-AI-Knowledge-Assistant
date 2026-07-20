@@ -1,21 +1,21 @@
 """
-Enterprise logging configuration.
+Enterprise logging configuration (Module 12).
 
-Features
---------
-- Console logging (colored in development)
-- Rotating application log file
-- Dedicated rotating error log file
-- Environment-aware log levels
+- Structured JSON logs in staging/production (or LOG_JSON=true)
+- Console + rotating app/error files
+- Request / correlation IDs via contextvars
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
+from contextvars import ContextVar
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from app.core.config import Environment, settings
 
@@ -23,9 +23,12 @@ try:
     from colorlog import ColoredFormatter
 
     _COLORLOG_AVAILABLE = True
-except ImportError:  # pragma: no cover - optional at install time
+except ImportError:  # pragma: no cover
     _COLORLOG_AVAILABLE = False
 
+
+request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
+correlation_id_ctx: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 
 _PLAIN_FORMAT = (
     "%(asctime)s | %(levelname)-8s | %(name)s | %(filename)s:%(lineno)d | %(message)s"
@@ -47,10 +50,54 @@ _LOG_COLORS = {
 _configured = False
 
 
+class JsonFormatter(logging.Formatter):
+    """Emit one JSON object per log line for aggregation (ELK / CloudWatch / Loki)."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "module": record.module,
+            "line": record.lineno,
+            "environment": settings.ENVIRONMENT.value,
+            "version": settings.PROJECT_VERSION,
+        }
+        rid = request_id_ctx.get()
+        cid = correlation_id_ctx.get()
+        if rid:
+            payload["request_id"] = rid
+        if cid:
+            payload["correlation_id"] = cid
+        if record.exc_info:
+            payload["exc_info"] = self.formatException(record.exc_info)
+        return json.dumps(payload, default=str)
+
+
+def set_request_ids(*, request_id: str | None, correlation_id: str | None = None) -> None:
+    request_id_ctx.set(request_id)
+    correlation_id_ctx.set(correlation_id or request_id)
+
+
+def clear_request_ids() -> None:
+    request_id_ctx.set(None)
+    correlation_id_ctx.set(None)
+
+
+def _use_json() -> bool:
+    return bool(settings.LOG_JSON) or settings.ENVIRONMENT in (
+        Environment.PRODUCTION,
+        Environment.STAGING,
+    )
+
+
 def _build_console_handler(level: int) -> logging.Handler:
-    """Create a console StreamHandler, colored in development when possible."""
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(level)
+    if _use_json():
+        handler.setFormatter(JsonFormatter())
+        return handler
 
     use_color = (
         settings.ENVIRONMENT == Environment.DEVELOPMENT
@@ -65,7 +112,6 @@ def _build_console_handler(level: int) -> logging.Handler:
         )
     else:
         formatter = logging.Formatter(_PLAIN_FORMAT, datefmt=_DATE_FORMAT)
-
     handler.setFormatter(formatter)
     return handler
 
@@ -76,7 +122,6 @@ def _build_rotating_file_handler(
     max_bytes: int,
     backup_count: int,
 ) -> logging.Handler:
-    """Create a rotating file handler writing to ``path``."""
     path.parent.mkdir(parents=True, exist_ok=True)
     handler = RotatingFileHandler(
         filename=str(path),
@@ -85,19 +130,13 @@ def _build_rotating_file_handler(
         encoding="utf-8",
     )
     handler.setLevel(level)
-    handler.setFormatter(logging.Formatter(_PLAIN_FORMAT, datefmt=_DATE_FORMAT))
+    handler.setFormatter(
+        JsonFormatter() if _use_json() else logging.Formatter(_PLAIN_FORMAT, datefmt=_DATE_FORMAT)
+    )
     return handler
 
 
 def setup_logging(force: bool = False) -> None:
-    """
-    Initialize enterprise logging once for the process.
-
-    Parameters
-    ----------
-    force:
-        Reconfigure even if logging was already set up (useful in tests).
-    """
     global _configured
     if _configured and not force:
         return
@@ -128,28 +167,26 @@ def setup_logging(force: bool = False) -> None:
         )
     )
 
-    # Keep uvicorn loggers aligned without duplicating handlers
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
         uv_logger = logging.getLogger(name)
         uv_logger.handlers.clear()
         uv_logger.propagate = True
 
-    # Quiet noisy third-party libraries in production
-    if settings.is_production:
+    if settings.is_production or settings.is_staging:
         logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
         logging.getLogger("asyncio").setLevel(logging.WARNING)
 
     _configured = True
     logging.getLogger(__name__).info(
-        "Logging initialized | env=%s | level=%s | dir=%s",
+        "Logging initialized | env=%s | level=%s | json=%s | dir=%s",
         settings.ENVIRONMENT.value,
         settings.LOG_LEVEL,
+        _use_json(),
         log_dir,
     )
 
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:
-    """Return a named logger (ensures setup has run)."""
     if not _configured:
         setup_logging()
     return logging.getLogger(name if name else __name__)

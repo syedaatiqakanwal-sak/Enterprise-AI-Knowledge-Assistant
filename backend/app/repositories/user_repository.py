@@ -50,19 +50,47 @@ class UserRepository:
         email: str,
         hashed_password: str,
         full_name: str,
+        phone: str | None = None,
         is_verified: bool = False,
+        tenant_id: uuid.UUID | None = None,
+        organization_id: uuid.UUID | None = None,
+        team_id: uuid.UUID | None = None,
+        status: str = "active",
     ) -> User:
         """Insert a new user row."""
         user = User(
             email=email.lower(),
             hashed_password=hashed_password,
             full_name=full_name,
+            phone=phone,
             is_verified=is_verified,
-            is_active=True,
+            is_active=status == "active",
+            tenant_id=tenant_id,
+            organization_id=organization_id,
+            team_id=team_id,
+            status=status,
         )
         self._session.add(user)
         await self._session.flush()
         await self._session.refresh(user)
+        return user
+
+    async def update_profile(
+        self,
+        user: User,
+        *,
+        full_name: str | None = None,
+        phone: str | None = None,
+        clear_phone: bool = False,
+    ) -> User:
+        """Update mutable profile fields."""
+        if full_name is not None:
+            user.full_name = full_name
+        if clear_phone:
+            user.phone = None
+        elif phone is not None:
+            user.phone = phone
+        await self._session.flush()
         return user
 
     async def assign_role(self, user: User, role: Role) -> UserRole:
@@ -94,7 +122,7 @@ class UserRepository:
         await self._session.flush()
 
     async def list_active(self, *, limit: int = 100, offset: int = 0) -> Sequence[User]:
-        """List active, non-deleted users (admin use)."""
+        """List active, non-deleted users (admin/manager use)."""
         stmt = (
             select(User)
             .where(User.deleted_at.is_(None), User.is_active.is_(True))
@@ -105,3 +133,14 @@ class UserRepository:
         )
         result = await self._session.execute(stmt)
         return result.scalars().all()
+
+    async def count_active(self) -> int:
+        """Count non-deleted active users."""
+        from sqlalchemy import func
+
+        stmt = select(func.count()).select_from(User).where(
+            User.deleted_at.is_(None),
+            User.is_active.is_(True),
+        )
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one())

@@ -16,11 +16,12 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI, status
+from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
+from app.api.metrics import PrometheusMiddleware, router as metrics_router
 from app.api.v1.api import api_router
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
@@ -29,9 +30,11 @@ from app.db.mongodb import MongoDBManager
 from app.db.postgres import AsyncSessionLocal, close_postgres, init_postgres
 from app.db.redis import RedisManager
 from app.db.seed import seed_rbac
-from app.middlewares.jwt_auth import JWTAuthMiddleware
+from app.middlewares.jwt import JWTAuthMiddleware
 from app.middlewares.request_context import RequestContextMiddleware
-from app.schemas.health import HealthResponse, RootResponse
+from app.middlewares.security_headers import SecurityHeadersMiddleware
+from app.middlewares.tenant_context import TenantContextMiddleware
+from app.schemas.health import HealthResponse, LiveResponse, ReadyResponse, RootResponse
 from app.services.health_service import health_service
 
 logger = logging.getLogger(__name__)
@@ -61,11 +64,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     try:
         async with AsyncSessionLocal() as session:
             await seed_rbac(session)
-        logger.info("RBAC seed completed")
+        logger.info("RBAC + tenancy seed completed")
     except Exception as exc:  # noqa: BLE001
         if settings.is_production:
             raise
-        logger.warning("RBAC seed skipped: %s", exc)
+        logger.warning("RBAC/tenancy seed skipped: %s", exc)
 
     yield
 
@@ -117,15 +120,33 @@ def create_application() -> FastAPI:
         description=(
             f"{settings.PROJECT_DESCRIPTION}\n\n"
             f"![Logo]({SWAGGER_LOGO_URL})\n\n"
-            "## Module 2B — Enterprise Authentication\n\n"
-            "JWT access/refresh tokens, RBAC (Admin / Manager / Employee), "
-            "email verification, password reset, rate limiting.\n\n"
-            "Core infrastructure from Module 2A remains available."
+            "Enterprise multi-tenant platform: Auth, DMS, RAG, OCR/Vision, "
+            "Meetings, Agents, Analytics, and Admin.\n\n"
+            "**Probes:** `/live` · `/ready` · `/health` · `/metrics`\n\n"
+            "**Environments:** development · testing · staging · production"
         ),
         version=settings.PROJECT_VERSION,
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
-        docs_url=None,  # custom Swagger UI below
+        docs_url=None,
         redoc_url="/redoc",
+        openapi_tags=[
+            {"name": "Health", "description": "Liveness, readiness, and dependency health"},
+            {"name": "Observability", "description": "Prometheus metrics"},
+            {"name": "Authentication", "description": "Register, login, refresh, password reset"},
+            {"name": "Users", "description": "User profile and directory"},
+            {"name": "Documents", "description": "Document management system"},
+            {"name": "Document Indexing", "description": "Vector indexing jobs"},
+            {"name": "Folders", "description": "Folder hierarchy"},
+            {"name": "Chat / RAG", "description": "Retrieval-augmented chat"},
+            {"name": "Semantic Search", "description": "Vector search over knowledge"},
+            {"name": "OCR", "description": "Optical character recognition"},
+            {"name": "Vision", "description": "Image analysis / object detection"},
+            {"name": "Meetings", "description": "Meeting intelligence pipeline"},
+            {"name": "AI Agents", "description": "Agent sessions, tools, workflows"},
+            {"name": "Analytics", "description": "Usage analytics and AI observability"},
+            {"name": "Admin / Tenancy", "description": "Multi-tenant SaaS administration"},
+            {"name": "Root", "description": "API discovery"},
+        ],
         contact={
             "name": settings.CONTACT_NAME,
             "email": settings.CONTACT_EMAIL,
@@ -140,6 +161,9 @@ def create_application() -> FastAPI:
 
     # --- Middleware (order: last added = outermost) ---
     application.add_middleware(JWTAuthMiddleware)
+    application.add_middleware(TenantContextMiddleware)
+    application.add_middleware(PrometheusMiddleware)
+    application.add_middleware(SecurityHeadersMiddleware)
     application.add_middleware(RequestContextMiddleware)
     application.add_middleware(
         CORSMiddleware,
@@ -147,12 +171,13 @@ def create_application() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["X-Request-ID", "X-Correlation-ID"],
     )
 
     register_exception_handlers(application)
 
-    # Versioned API — all future endpoints mount under /api/v1
     application.include_router(api_router, prefix=settings.API_V1_STR)
+    application.include_router(metrics_router)
 
     @application.get(
         "/docs",
@@ -187,6 +212,9 @@ def create_application() -> FastAPI:
             environment=settings.ENVIRONMENT.value,
             docs="/docs",
             health="/health",
+            live="/live",
+            ready="/ready",
+            metrics="/metrics",
             api_v1=settings.API_V1_STR,
         )
 
@@ -197,13 +225,63 @@ def create_application() -> FastAPI:
         tags=["Health"],
         summary="Infrastructure health probe",
         description=(
-            "Load-balancer / Docker health endpoint. Returns backend status, "
-            "Postgres / Mongo / Redis status, version, and environment."
+            "Full dependency health for load balancers and operators. "
+            "Checks PostgreSQL, MongoDB, Redis, and Qdrant."
         ),
+        responses={
+            200: {
+                "description": "Health payload",
+                "content": {
+                    "application/json": {
+                        "example": {
+                            "status": "healthy",
+                            "backend": "up",
+                            "services": {
+                                "postgres": "up",
+                                "mongodb": "up",
+                                "redis": "up",
+                                "qdrant": "up",
+                            },
+                            "version": "0.12.0",
+                            "environment": "production",
+                        }
+                    }
+                },
+            }
+        },
     )
     async def root_health() -> HealthResponse:
         """Unauthenticated infrastructure health check at ``GET /health``."""
         return await health_service.check()
+
+    @application.get(
+        "/live",
+        response_model=LiveResponse,
+        tags=["Health"],
+        summary="Liveness probe",
+        description="Kubernetes liveness — returns 200 if the process is alive.",
+    )
+    async def live() -> LiveResponse:
+        return await health_service.live()
+
+    @application.get(
+        "/ready",
+        response_model=ReadyResponse,
+        tags=["Health"],
+        summary="Readiness probe",
+        description=(
+            "Kubernetes readiness — 200 when Postgres, Redis, and Mongo are up. "
+            "Returns 503 when not ready."
+        ),
+    )
+    async def ready() -> Response:
+        payload = await health_service.ready()
+        code = (
+            status.HTTP_200_OK
+            if payload.status == "ready"
+            else status.HTTP_503_SERVICE_UNAVAILABLE
+        )
+        return JSONResponse(content=payload.model_dump(), status_code=code)
 
     return application
 

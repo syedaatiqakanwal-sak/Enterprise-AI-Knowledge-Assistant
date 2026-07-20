@@ -37,6 +37,9 @@ backend/logs/
 tmp/
 temp/
 
+# Local document storage (Module 5–7)
+backend/storage/
+
 # Python virtualenvs
 .venv/
 venv/

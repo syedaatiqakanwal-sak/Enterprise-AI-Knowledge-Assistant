@@ -1,20 +1,12 @@
 """
-Centralized exception types and FastAPI exception handlers.
+Centralized exception types and FastAPI exception handlers (Module 3 envelope).
 
-All API errors are returned as a consistent JSON envelope:
-
-```json
+Error response:
 {
   "success": false,
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Human-readable summary",
-    "details": [...]
-  },
-  "path": "/api/v1/...",
-  "request_id": "..."
+  "message": "...",
+  "errors": { "code": "...", "details": ... }
 }
-```
 """
 
 from __future__ import annotations
@@ -50,32 +42,21 @@ class AppException(Exception):
 
 
 def _request_id(request: Request) -> str:
-    """Read or create a correlation id for the request."""
     return request.headers.get("X-Request-ID") or str(uuid4())
 
 
-def _error_payload(
-    *,
-    code: str,
-    message: str,
-    path: str,
-    request_id: str,
-    details: Any = None,
-) -> dict[str, Any]:
+def _error_body(*, message: str, code: str, details: Any = None) -> dict[str, Any]:
+    errors: dict[str, Any] = {"code": code}
+    if details is not None:
+        errors["details"] = details
     return {
         "success": False,
-        "error": {
-            "code": code,
-            "message": message,
-            "details": details,
-        },
-        "path": path,
-        "request_id": request_id,
+        "message": message,
+        "errors": errors,
     }
 
 
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
-    """Handle known application exceptions."""
     request_id = _request_id(request)
     logger.warning(
         "AppException | code=%s | path=%s | request_id=%s | message=%s",
@@ -86,13 +67,7 @@ async def app_exception_handler(request: Request, exc: AppException) -> JSONResp
     )
     return JSONResponse(
         status_code=exc.status_code,
-        content=_error_payload(
-            code=exc.code,
-            message=exc.message,
-            path=request.url.path,
-            request_id=request_id,
-            details=exc.details,
-        ),
+        content=_error_body(message=exc.message, code=exc.code, details=exc.details),
         headers={"X-Request-ID": request_id},
     )
 
@@ -100,20 +75,13 @@ async def app_exception_handler(request: Request, exc: AppException) -> JSONResp
 async def http_exception_handler(
     request: Request, exc: StarletteHTTPException
 ) -> JSONResponse:
-    """Handle FastAPI / Starlette HTTPException."""
     request_id = _request_id(request)
     detail = exc.detail
     message = detail if isinstance(detail, str) else "HTTP error"
     details = None if isinstance(detail, str) else detail
     return JSONResponse(
         status_code=exc.status_code,
-        content=_error_payload(
-            code="HTTP_ERROR",
-            message=message,
-            path=request.url.path,
-            request_id=request_id,
-            details=details,
-        ),
+        content=_error_body(message=message, code="HTTP_ERROR", details=details),
         headers={"X-Request-ID": request_id},
     )
 
@@ -121,15 +89,12 @@ async def http_exception_handler(
 async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
-    """Handle Pydantic / FastAPI request validation errors."""
     request_id = _request_id(request)
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content=_error_payload(
-            code="VALIDATION_ERROR",
+        content=_error_body(
             message="Request validation failed",
-            path=request.url.path,
-            request_id=request_id,
+            code="VALIDATION_ERROR",
             details=exc.errors(),
         ),
         headers={"X-Request-ID": request_id},
@@ -137,7 +102,6 @@ async def validation_exception_handler(
 
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Catch-all for unexpected exceptions (never leak internals in production)."""
     request_id = _request_id(request)
     logger.exception(
         "Unhandled exception | path=%s | request_id=%s",
@@ -151,12 +115,9 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content=_error_payload(
-            code="INTERNAL_SERVER_ERROR",
+        content=_error_body(
             message=message,
-            path=request.url.path,
-            request_id=request_id,
-            details=None,
+            code="INTERNAL_SERVER_ERROR",
         ),
         headers={"X-Request-ID": request_id},
     )

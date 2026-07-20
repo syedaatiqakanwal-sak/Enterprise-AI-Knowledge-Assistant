@@ -1,51 +1,85 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Sora:wght@500;600;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * Enterprise SaaS design tokens
+ * Primary #8B5CF6 · Accent #A78BFA · BG #0B0E14 · Card #111827 · Text #F9FAFB
+ * Radius 12px · Spacing 8px grid
+ */
+
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Light mode — cool enterprise (secondary theme) */
+    --background: 220 20% 97%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --popover-foreground: 222 47% 11%;
+    --primary: 258 90% 66%; /* #8B5CF6 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 92%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 220 14% 94%;
+    --muted-foreground: 215 16% 40%;
+    --accent: 263 100% 79%; /* soft #A78BFA surface tint */
+    --accent-foreground: 258 70% 35%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 69% 40%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --border: 220 13% 88%;
+    --input: 220 13% 88%;
+    --ring: 258 90% 66%;
+    --radius: 0.75rem; /* 12px */
+
+    --sidebar: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-muted: 220 14% 96%;
+    --sidebar-border: 220 13% 90%;
+    --sidebar-accent: 258 90% 96%;
+    --sidebar-accent-foreground: 258 70% 40%;
+
+    --space: 0.5rem; /* 8px base unit */
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    /* Exact brand dark surfaces */
+    --background: 220 29% 6%; /* ≈ #0B0E14 */
+    --foreground: 210 20% 98%; /* ≈ #F9FAFB */
+    --card: 221 39% 11%; /* ≈ #111827 */
+    --card-foreground: 210 20% 98%;
+    --popover: 221 39% 11%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 258 90% 66%; /* #8B5CF6 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 25% 16%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 217 25% 14%;
+    --muted-foreground: 215 16% 65%;
+    --accent: 263 100% 79%; /* #A78BFA as accent signal */
+    --accent-foreground: 220 29% 6%;
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 60% 42%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 8%;
+    --border: 217 20% 18%;
+    --input: 217 20% 18%;
+    --ring: 258 90% 66%;
+
+    --sidebar: 220 29% 5%;
+    --sidebar-foreground: 210 20% 98%;
+    --sidebar-muted: 220 25% 9%;
+    --sidebar-border: 217 20% 14%;
+    --sidebar-accent: 258 50% 18%;
+    --sidebar-accent-foreground: 263 100% 85%;
   }
 }
 
@@ -53,7 +87,126 @@
   * {
     @apply border-border;
   }
+
+  html {
+    @apply scroll-smooth;
+  }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans antialiased;
+    min-height: 100vh;
+    font-feature-settings: "ss01" on, "cv11" on;
+  }
+
+  /* Focus visible — keyboard accessibility */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: "Sora", system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  /* Selection */
+  ::selection {
+    @apply bg-primary/30 text-foreground;
+  }
+
+  /* Scrollbar — subtle enterprise */
+  .dark ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .dark ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: hsl(217 20% 22%);
+    border-radius: 999px;
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: hsl(258 40% 40%);
+  }
+}
+
+@layer components {
+  .page-shell {
+    @apply mx-auto w-full max-w-[1400px] space-y-6 p-4 sm:p-6 lg:p-8;
+  }
+
+  .section-title {
+    @apply font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl;
+  }
+
+  .section-subtitle {
+    @apply mt-1 text-sm text-muted-foreground sm:text-base;
+  }
+
+  .surface-card {
+    @apply rounded-xl border border-border bg-card text-card-foreground shadow-sm;
+  }
+
+  .surface-elevated {
+    @apply rounded-xl border border-border/80 bg-card shadow-lg shadow-black/20;
+  }
+
+  .interactive-row {
+    @apply transition-colors duration-150 hover:bg-muted/50;
+  }
+
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .glass {
+    @apply border border-border/60 bg-card/70 backdrop-blur-xl;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden rounded-md bg-muted;
+  }
+
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full animate-shimmer;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(167, 139, 250, 0.12),
+      transparent
+    );
+  }
+
+  /* 8px spacing helpers */
+  .gap-space {
+    gap: var(--space);
+  }
+  .p-space {
+    padding: var(--space);
+  }
+  .stack-2 {
+    @apply flex flex-col gap-2;
+  }
+  .stack-3 {
+    @apply flex flex-col gap-3;
+  }
+  .stack-4 {
+    @apply flex flex-col gap-4;
+  }
+  .stack-6 {
+    @apply flex flex-col gap-6;
+  }
+  .stack-8 {
+    @apply flex flex-col gap-8;
   }
 }

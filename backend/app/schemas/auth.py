@@ -1,37 +1,35 @@
 """
-Authentication and user Pydantic schemas (API contracts).
+Authentication request/response schemas (Module 3).
 """
 
 from __future__ import annotations
 
-import re
-import uuid
-from datetime import datetime
-from typing import Optional
-
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-
-_PASSWORD_PATTERN = re.compile(
-    r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,128}$"
-)
-
-
-def _validate_password_strength(value: str) -> str:
-    if not _PASSWORD_PATTERN.match(value):
-        raise ValueError(
-            "Password must be 8–128 characters and include uppercase, lowercase, "
-            "digit, and special character"
-        )
-    return value
+from app.schemas.token import TokenPair
+from app.schemas.user import UserOut, validate_password_strength
 
 
 class RegisterRequest(BaseModel):
     """User registration payload."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "email": "jane@company.com",
+                    "password": "StrongPass1!",
+                    "full_name": "Jane Doe",
+                    "phone": "+1 555-0100",
+                }
+            ]
+        }
+    )
+
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
     full_name: str = Field(..., min_length=2, max_length=255)
+    phone: str | None = Field(None, max_length=20)
 
     @field_validator("email")
     @classmethod
@@ -49,11 +47,17 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def strong_password(cls, value: str) -> str:
-        return _validate_password_strength(value)
+        return validate_password_strength(value)
 
 
 class LoginRequest(BaseModel):
     """Login credentials."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [{"email": "jane@company.com", "password": "StrongPass1!"}]
+        }
+    )
 
     email: EmailStr
     password: str = Field(..., min_length=1, max_length=128)
@@ -96,7 +100,7 @@ class ResetPasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def strong_password(cls, value: str) -> str:
-        return _validate_password_strength(value)
+        return validate_password_strength(value)
 
 
 class VerifyEmailRequest(BaseModel):
@@ -105,49 +109,19 @@ class VerifyEmailRequest(BaseModel):
     token: str = Field(..., min_length=20)
 
 
-class TokenResponse(BaseModel):
-    """Access + refresh token pair."""
-
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-    expires_in: int = Field(..., description="Access token lifetime in seconds")
-
-
-class MessageResponse(BaseModel):
-    """Generic success message."""
-
-    message: str
-    success: bool = True
-
-
-class RoleOut(BaseModel):
-    """Public role representation."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    name: str
-    description: Optional[str] = None
-
-
-class UserOut(BaseModel):
-    """Public user profile (never includes password hash)."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    email: EmailStr
-    full_name: str
-    is_active: bool
-    is_verified: bool
-    last_login: Optional[datetime] = None
-    created_at: datetime
-    roles: list[RoleOut] = Field(default_factory=list)
-
-
-class AuthResponse(BaseModel):
-    """Login / register response combining tokens and user profile."""
+class AuthData(BaseModel):
+    """Auth success payload (user + tokens)."""
 
     user: UserOut
-    tokens: TokenResponse
+    tokens: TokenPair
+
+
+# Backward-compatible aliases used by older imports
+TokenResponse = TokenPair
+AuthResponse = AuthData
+
+
+class MessageData(BaseModel):
+    """Simple message wrapper for envelope data when no entity is returned."""
+
+    detail: str
