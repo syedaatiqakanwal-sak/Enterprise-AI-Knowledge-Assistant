@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import logging
 import math
+import pickle
+import re
 import threading
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+_TOKEN_RE = re.compile(r"[a-z0-9]{2,}", re.IGNORECASE)
 
 
 @dataclass
@@ -30,12 +34,64 @@ class _MemPoint:
     payload: dict[str, Any]
 
 
-class InMemoryVectorStore:
-    """Simple cosine-similarity store used when Qdrant is unavailable."""
+def _memory_store_path() -> Path:
+    root = Path(settings.STORAGE_LOCAL_ROOT).resolve().parent / "vectors"
+    root.mkdir(parents=True, exist_ok=True)
+    return root / "memory_store.pkl"
 
-    def __init__(self) -> None:
+
+class InMemoryVectorStore:
+    """Cosine + keyword store used when Qdrant is unavailable.
+
+    Persists to disk so indexed documents survive API restarts (common in
+    local Windows/dev without Docker Qdrant).
+    """
+
+    def __init__(self, *, persist_path: Path | None = None) -> None:
         self._points: list[_MemPoint] = []
         self._lock = threading.Lock()
+        self._persist_path = persist_path or _memory_store_path()
+        self._load()
+
+    def _load(self) -> None:
+        path = self._persist_path
+        if not path.exists():
+            return
+        try:
+            with path.open("rb") as fh:
+                raw = pickle.load(fh)
+            points: list[_MemPoint] = []
+            for item in raw or []:
+                points.append(
+                    _MemPoint(
+                        id=str(item["id"]),
+                        vector=list(item["vector"]),
+                        payload=dict(item["payload"]),
+                    )
+                )
+            self._points = points
+            logger.info(
+                "Loaded %s in-memory vector points from %s",
+                len(self._points),
+                path,
+            )
+        except Exception:
+            logger.exception("Failed to load vector store from %s", path)
+
+    def _save(self) -> None:
+        path = self._persist_path
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload = [
+                {"id": p.id, "vector": p.vector, "payload": p.payload}
+                for p in self._points
+            ]
+            tmp = path.with_suffix(".pkl.tmp")
+            with tmp.open("wb") as fh:
+                pickle.dump(payload, fh, protocol=pickle.HIGHEST_PROTOCOL)
+            tmp.replace(path)
+        except Exception:
+            logger.exception("Failed to persist vector store to %s", path)
 
     def upsert(self, points: list[tuple[str, list[float], dict[str, Any]]]) -> None:
         with self._lock:
@@ -43,6 +99,7 @@ class InMemoryVectorStore:
             self._points = [p for p in self._points if p.id not in ids]
             for pid, vec, payload in points:
                 self._points.append(_MemPoint(pid, vec, payload))
+            self._save()
 
     def delete_by_document(self, document_id: str) -> None:
         with self._lock:
@@ -51,6 +108,11 @@ class InMemoryVectorStore:
                 for p in self._points
                 if str(p.payload.get("document_id")) != str(document_id)
             ]
+            self._save()
+
+    def count(self) -> int:
+        with self._lock:
+            return len(self._points)
 
     def search(
         self,
@@ -82,13 +144,58 @@ class InMemoryVectorStore:
         scored.sort(key=lambda h: h.score, reverse=True)
         return scored[:top_k]
 
+    def keyword_search(
+        self,
+        query: str,
+        *,
+        top_k: int = 5,
+        filters: dict[str, Any] | None = None,
+    ) -> list[VectorHit]:
+        """Token-overlap ranking — helps when mock hash embeddings miss paraphrases."""
+        q_tokens = set(_TOKEN_RE.findall(query.lower()))
+        if not q_tokens:
+            return []
+        with self._lock:
+            candidates = list(self._points)
+        if filters:
+            candidates = [
+                p for p in candidates if self._match(p.payload, filters)
+            ]
+        scored: list[VectorHit] = []
+        for p in candidates:
+            text = str(p.payload.get("text", ""))
+            if not text:
+                continue
+            t_tokens = set(_TOKEN_RE.findall(text.lower()))
+            if not t_tokens:
+                continue
+            overlap = q_tokens & t_tokens
+            if not overlap:
+                continue
+            # Prefer denser overlap; mild boost for rarer multi-token matches
+            score = len(overlap) / len(q_tokens)
+            if len(overlap) >= 2:
+                score = min(1.0, score + 0.15)
+            scored.append(
+                VectorHit(
+                    id=p.id,
+                    score=score,
+                    payload=p.payload,
+                    text=text,
+                )
+            )
+        scored.sort(key=lambda h: h.score, reverse=True)
+        return scored[:top_k]
+
     @staticmethod
     def _match(payload: dict[str, Any], filters: dict[str, Any]) -> bool:
         for key, value in filters.items():
             if value is None:
                 continue
             if key == "document_ids":
-                if str(payload.get("document_id")) not in {str(v) for v in value}:
+                # Empty allow-list must match nothing (not everything)
+                allowed = {str(v) for v in value}
+                if not allowed or str(payload.get("document_id")) not in allowed:
                     return False
                 continue
             if key == "tags":
@@ -222,6 +329,7 @@ class QdrantService:
         top_k: int | None = None,
         score_threshold: float | None = None,
         filters: dict[str, Any] | None = None,
+        query: str | None = None,
     ) -> list[VectorHit]:
         top_k = top_k or settings.RETRIEVAL_TOP_K
         score_threshold = (
@@ -230,12 +338,17 @@ class QdrantService:
             else settings.RETRIEVAL_SCORE_THRESHOLD
         )
         if self._use_memory or self._client is None:
-            return _MEMORY.search(
+            hits = _MEMORY.search(
                 vector,
                 top_k=top_k,
                 score_threshold=score_threshold,
                 filters=filters,
             )
+            # Keyword fallback when vectors miss (mock embeddings / empty store)
+            if query and (not hits or (settings.EMBEDDING_PROVIDER or "").lower() == "mock"):
+                kw = _MEMORY.keyword_search(query, top_k=top_k, filters=filters)
+                hits = _merge_hits(hits, kw, top_k=top_k)
+            return hits
 
         from qdrant_client.http import models as qm
 
@@ -259,6 +372,43 @@ class QdrantService:
                 )
             )
         return hits
+
+    def keyword_search(
+        self,
+        query: str,
+        *,
+        top_k: int | None = None,
+        filters: dict[str, Any] | None = None,
+    ) -> list[VectorHit]:
+        """Lexical search over the in-memory store (dev fallback)."""
+        return _MEMORY.keyword_search(
+            query,
+            top_k=top_k or settings.RETRIEVAL_TOP_K,
+            filters=filters,
+        )
+
+    @property
+    def using_memory(self) -> bool:
+        return self._use_memory or self._client is None
+
+    def memory_count(self) -> int:
+        return _MEMORY.count()
+
+
+def _merge_hits(
+    primary: list[VectorHit],
+    secondary: list[VectorHit],
+    *,
+    top_k: int,
+) -> list[VectorHit]:
+    """Prefer higher scores; keep unique chunk ids."""
+    by_id: dict[str, VectorHit] = {}
+    for hit in primary + secondary:
+        prev = by_id.get(hit.id)
+        if prev is None or hit.score > prev.score:
+            by_id[hit.id] = hit
+    merged = sorted(by_id.values(), key=lambda h: h.score, reverse=True)
+    return merged[:top_k]
 
 
 def _is_uuid(value: str) -> bool:

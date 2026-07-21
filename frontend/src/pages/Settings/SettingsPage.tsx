@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   Bell,
   Building2,
+  Cpu,
   Globe,
   Loader2,
   Lock,
@@ -18,6 +19,7 @@ import {
 import { authApi } from "@/services/api/auth";
 import { usersApi } from "@/services/api/auth";
 import { getErrorMessage } from "@/services/api/client";
+import { systemApi, type OllamaStatus } from "@/services/api/system";
 import { useAuth, getErrorMessage as authErrorMessage } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeMode } from "@/types";
@@ -31,11 +33,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/common/Card";
+import { Badge } from "@/components/common/Badge";
 import { cn } from "@/lib/utils";
 
 const tabs = [
   { id: "profile", label: "Profile", icon: User },
   { id: "company", label: "Company", icon: Building2 },
+  { id: "ai", label: "AI / Ollama", icon: Cpu },
   { id: "password", label: "Password", icon: Lock },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "theme", label: "Theme", icon: Palette },
@@ -78,6 +82,89 @@ export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>("profile");
   const [profileSaving, setProfileSaving] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [ollamaLoading, setOllamaLoading] = useState(false);
+  const [ollamaTesting, setOllamaTesting] = useState(false);
+  const [llmProvider, setLlmProvider] = useState<string>("");
+  const [embeddingProvider, setEmbeddingProvider] = useState<string>("");
+
+  const loadOllamaPanel = async () => {
+    setOllamaLoading(true);
+    try {
+      const [statusRes, modelsRes, llmRes] = await Promise.all([
+        systemApi.ollamaStatus(),
+        systemApi.ollamaModels(),
+        systemApi.llmInfo(),
+      ]);
+      if (statusRes.data.success && statusRes.data.data) {
+        setOllamaStatus(statusRes.data.data);
+        setLlmProvider(
+          statusRes.data.data.llm_provider_setting ||
+            llmRes.data.data?.provider ||
+            "",
+        );
+        setEmbeddingProvider(statusRes.data.data.embedding_provider || "");
+      }
+      if (modelsRes.data.success && modelsRes.data.data) {
+        setOllamaModels(modelsRes.data.data.models || []);
+        const sel =
+          modelsRes.data.data.selected_model ||
+          statusRes.data.data?.selected_model ||
+          "";
+        setSelectedModel(sel || "");
+      }
+      if (llmRes.data.success && llmRes.data.data) {
+        setLlmProvider(llmRes.data.data.llm_provider_setting);
+        setEmbeddingProvider(llmRes.data.data.embedding_provider);
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error) || "Failed to load Ollama status");
+    } finally {
+      setOllamaLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "ai") {
+      void loadOllamaPanel();
+    }
+  }, [activeTab]);
+
+  const onTestOllama = async () => {
+    setOllamaTesting(true);
+    try {
+      const { data } = await systemApi.testOllama(selectedModel || null);
+      if (data.data) setOllamaStatus(data.data);
+      if (data.success && data.data?.reachable && !data.data.error) {
+        toast.success(data.message || "Ollama connection OK");
+      } else {
+        toast.error(data.data?.error || data.message || "Ollama test failed");
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error) || "Ollama test failed");
+    } finally {
+      setOllamaTesting(false);
+    }
+  };
+
+  const onSelectModel = async () => {
+    if (!selectedModel) {
+      toast.error("Select a model first");
+      return;
+    }
+    try {
+      const { data } = await systemApi.selectOllamaModel(selectedModel);
+      if (!data.success) {
+        throw new Error(data.message || "Failed to select model");
+      }
+      toast.success(data.message || `Model set to ${selectedModel}`);
+      await loadOllamaPanel();
+    } catch (error) {
+      toast.error(getErrorMessage(error) || "Failed to select model");
+    }
+  };
 
   const profileForm = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
@@ -245,6 +332,133 @@ export function SettingsPage() {
                   <Input id="domain" defaultValue="acme.com" />
                 </div>
                 <Button disabled>Save company settings</Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {activeTab === "ai" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>AI / Ollama</CardTitle>
+                <CardDescription>
+                  Current LLM provider, embedding provider, and local Ollama
+                  connection status
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="secondary">
+                    LLM: {llmProvider || "—"}
+                  </Badge>
+                  <Badge variant="secondary">
+                    Embeddings: {embeddingProvider || "—"}
+                  </Badge>
+                  <Badge variant="secondary">
+                    Model: {ollamaStatus?.selected_model || selectedModel || "—"}
+                  </Badge>
+                  <Badge
+                    variant={
+                      ollamaStatus?.reachable ? "success" : "warning"
+                    }
+                  >
+                    Ollama:{" "}
+                    {ollamaLoading
+                      ? "checking…"
+                      : ollamaStatus?.reachable
+                        ? "reachable"
+                        : "unreachable"}
+                  </Badge>
+                </div>
+
+                <div className="grid gap-3 text-sm sm:grid-cols-2">
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-muted-foreground">Version</p>
+                    <p className="font-medium">
+                      {ollamaStatus?.version ?? "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-muted-foreground">Latency</p>
+                    <p className="font-medium">
+                      {ollamaStatus?.latency_ms != null
+                        ? `${ollamaStatus.latency_ms} ms`
+                        : "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-muted-foreground">GPU</p>
+                    <p className="font-medium">
+                      {ollamaStatus?.gpu_available == null
+                        ? "unknown"
+                        : ollamaStatus.gpu_available
+                          ? "available"
+                          : "not detected"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-muted-foreground">Base URL</p>
+                    <p className="font-medium break-all">
+                      {ollamaStatus?.base_url ?? "—"}
+                    </p>
+                  </div>
+                </div>
+
+                {ollamaStatus?.error ? (
+                  <p className="text-sm text-destructive">{ollamaStatus.error}</p>
+                ) : null}
+
+                <div className="max-w-md space-y-2">
+                  <Label htmlFor="ollama-model">Ollama model</Label>
+                  <select
+                    id="ollama-model"
+                    className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    disabled={ollamaLoading || ollamaModels.length === 0}
+                  >
+                    {ollamaModels.length === 0 ? (
+                      <option value="">No models discovered</option>
+                    ) : (
+                      ollamaModels.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Models are discovered from the local Ollama server. Pull new
+                    ones with <code>ollama pull &lt;name&gt;</code>.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void loadOllamaPanel()}
+                    disabled={ollamaLoading}
+                  >
+                    {ollamaLoading && <Loader2 className="animate-spin" />}
+                    Refresh status
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => void onTestOllama()}
+                    disabled={ollamaTesting || ollamaLoading}
+                  >
+                    {ollamaTesting && <Loader2 className="animate-spin" />}
+                    Test Ollama Connection
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => void onSelectModel()}
+                    disabled={!selectedModel || ollamaLoading}
+                  >
+                    Use selected model
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}

@@ -65,6 +65,8 @@ class RAGEngine:
         otherwise an allow-list of document IDs.
         """
         is_admin = any(r.name == "admin" for r in (user.roles or []))
+        if is_admin:
+            return None
         items, _ = await self._docs.list_accessible(
             user,
             include_archived=False,
@@ -77,7 +79,7 @@ class RAGEngine:
             str(d.id)
             for d in items
             if d.status in {"indexed", "ready", "processing"}
-            or (is_admin and d.visibility == DocumentVisibility.ADMIN_ONLY.value)
+            or d.visibility == DocumentVisibility.ADMIN_ONLY.value
         ]
         return ids
 
@@ -107,11 +109,17 @@ class RAGEngine:
             filters["document_ids"] = [str(document_id)]
 
         t1 = time.perf_counter()
+        k = top_k or settings.RETRIEVAL_TOP_K
         hits = self._qdrant.search(
             vector,
-            top_k=top_k or settings.RETRIEVAL_TOP_K,
+            top_k=k,
             filters=filters or None,
+            query=query,
         )
+        if not hits:
+            hits = self._qdrant.keyword_search(
+                query, top_k=k, filters=filters or None
+            )
         retrieval_ms = (time.perf_counter() - t1) * 1000
 
         citations = [
@@ -128,6 +136,9 @@ class RAGEngine:
         return citations, {
             "embedding_ms": round(embed_ms, 2),
             "retrieval_ms": round(retrieval_ms, 2),
+            "vector_points": float(self._qdrant.memory_count())
+            if self._qdrant.using_memory
+            else -1.0,
         }
 
     def _format_context(self, citations: list[Citation]) -> str:

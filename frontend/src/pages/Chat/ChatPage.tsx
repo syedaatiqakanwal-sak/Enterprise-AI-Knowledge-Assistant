@@ -26,6 +26,7 @@ import {
   type Citation,
 } from "@/services/api/chat";
 import { documentsApi } from "@/services/api/documents";
+import { systemApi, type LlmRuntimeInfo } from "@/services/api/system";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn, initials } from "@/lib/utils";
 
@@ -56,6 +57,7 @@ export function ChatPage() {
   const [citations, setCitations] = useState<Citation[]>([]);
   const [searchQ, setSearchQ] = useState("");
   const [uploads, setUploads] = useState<ChatUpload[]>([]);
+  const [llmInfo, setLlmInfo] = useState<LlmRuntimeInfo | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastQuestion = useRef<string>("");
@@ -72,6 +74,17 @@ export function ChatPage() {
     } finally {
       setLoadingHistory(false);
     }
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const { data } = await systemApi.llmInfo();
+        if (data.success && data.data) setLlmInfo(data.data);
+      } catch {
+        /* non-blocking badge */
+      }
+    })();
   }, []);
 
   const openChat = useCallback(async (id: string) => {
@@ -167,6 +180,7 @@ export function ChatPage() {
             ),
         });
         if (!data.success) throw new Error(data.message || "Upload failed");
+        const docId = data.data?.document?.id;
         setUploads((list) =>
           list.map((x) =>
             x.id === localId
@@ -174,15 +188,48 @@ export function ChatPage() {
               : x,
           ),
         );
-        // Backend enqueues RAG index automatically after upload
-        setTimeout(() => {
+        // Poll until RAG index finishes (large PDFs can take minutes)
+        if (docId) {
+          let indexed = false;
+          for (let i = 0; i < 120; i++) {
+            await new Promise((r) => setTimeout(r, 2000));
+            try {
+              const res = await documentsApi.get(docId);
+              const status = res.data?.data?.status;
+              if (status === "indexed" || status === "ready") {
+                indexed = true;
+                break;
+              }
+              if (status === "failed") break;
+            } catch {
+              /* keep polling */
+            }
+          }
+          setUploads((list) =>
+            list.map((x) =>
+              x.id === localId
+                ? {
+                    ...x,
+                    status: indexed ? "ready" : "failed",
+                  }
+                : x,
+            ),
+          );
+          if (indexed) {
+            toast.success(`${file.name} indexed — ready for chat`);
+          } else {
+            toast.error(
+              `${file.name} uploaded but indexing is still running or failed. Re-index from Files if chat can't find it.`,
+            );
+          }
+        } else {
           setUploads((list) =>
             list.map((x) =>
               x.id === localId ? { ...x, status: "ready" } : x,
             ),
           );
-        }, 1500);
-        toast.success(`${file.name} uploaded — indexing for chat`);
+          toast.success(`${file.name} uploaded — indexing for chat`);
+        }
       } catch (err) {
         setUploads((list) =>
           list.map((x) =>
@@ -303,6 +350,16 @@ export function ChatPage() {
       </aside>
 
       <section className="flex min-w-0 flex-1 flex-col">
+        {llmInfo ? (
+          <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2">
+            <Badge variant="secondary" className="font-normal">
+              Provider · {llmInfo.provider}
+            </Badge>
+            <Badge variant="outline" className="font-normal">
+              Model · {llmInfo.model || "default"}
+            </Badge>
+          </div>
+        ) : null}
         <div className="flex-1 space-y-4 overflow-y-auto px-4 py-6">
           {messages.length === 0 && !sending ? (
             <div className="mx-auto max-w-2xl text-center">

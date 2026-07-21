@@ -114,8 +114,17 @@ def get_embedding_provider() -> EmbeddingProvider:
 
     if provider == "minilm":
         try:
+            model_name = (
+                settings.EMBEDDING_MODEL
+                or settings.EMBEDDING_MODEL_FALLBACK
+            )
+            if model_name and "/" not in model_name and not model_name.startswith(
+                "sentence-transformers/"
+            ):
+                # Allow short name: all-MiniLM-L6-v2
+                model_name = f"sentence-transformers/{model_name}"
             return SentenceTransformerProvider(
-                settings.EMBEDDING_MODEL_FALLBACK,
+                model_name,
                 settings.EMBEDDING_DIM_MINILM,
             )
         except Exception:

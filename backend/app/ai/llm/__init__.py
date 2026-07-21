@@ -7,6 +7,8 @@ from app.ai.llm.provider import (
     MockLLMProvider,
     OllamaProvider,
     OpenAIProvider,
+    clear_llm_provider_cache,
+    get_active_llm_info,
     get_llm_provider,
 )
 
@@ -19,5 +21,7 @@ __all__ = [
     "MockLLMProvider",
     "OllamaProvider",
     "OpenAIProvider",
+    "clear_llm_provider_cache",
+    "get_active_llm_info",
     "get_llm_provider",
 ]

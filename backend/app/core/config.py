@@ -150,6 +150,8 @@ class Settings(BaseSettings):
     EMBEDDING_PROVIDER: str = "bge"  # bge | minilm | mock
     EMBEDDING_MODEL_PRIMARY: str = "BAAI/bge-large-en-v1.5"
     EMBEDDING_MODEL_FALLBACK: str = "sentence-transformers/all-MiniLM-L6-v2"
+    # Optional alias used when EMBEDDING_PROVIDER=minilm (HF id or short name)
+    EMBEDDING_MODEL: Optional[str] = None
     EMBEDDING_BATCH_SIZE: int = 16
     EMBEDDING_DIM_BGE: int = 1024
     EMBEDDING_DIM_MINILM: int = 384
@@ -168,7 +170,10 @@ class Settings(BaseSettings):
     LLM_TEMPERATURE: float = 0.1
     LLM_MAX_TOKENS: int = 2048
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
-    OLLAMA_MODEL: str = "llama3"
+    # Default local model name — override via env; never hardcode in provider code
+    OLLAMA_MODEL: str = "llama3.2"
+    OLLAMA_TIMEOUT: float = 120.0
+    OLLAMA_CONNECT_TIMEOUT: float = 5.0
     AZURE_OPENAI_ENDPOINT: Optional[str] = None
     AZURE_OPENAI_API_KEY: Optional[str] = None
     AZURE_OPENAI_DEPLOYMENT: Optional[str] = None
