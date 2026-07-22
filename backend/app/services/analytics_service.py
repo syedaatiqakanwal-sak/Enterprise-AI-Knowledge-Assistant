@@ -81,6 +81,14 @@ class AnalyticsService:
         except Exception:
             cpu, ram_pct, ram_mb, disk = 12.0, 45.0, 2048.0, 55.0
 
+        qdrant_points = 0
+        try:
+            from app.ai.qdrant import get_qdrant_service
+
+            qdrant_points = int(get_qdrant_service().count_points())
+        except Exception:  # noqa: BLE001
+            logger.debug("Qdrant point count unavailable", exc_info=True)
+
         api = await self._repo.api_stats(since=datetime.now(timezone.utc) - timedelta(hours=1))
         await self._telemetry.record_system_snapshot(
             cpu_percent=cpu,
@@ -91,7 +99,7 @@ class AnalyticsService:
             queue_length=0,
             db_connections=1,
             redis_used_mb=0.0,
-            qdrant_points=0,
+            qdrant_points=qdrant_points,
             avg_response_ms=api.get("avg_latency_ms") or 0.0,
         )
 

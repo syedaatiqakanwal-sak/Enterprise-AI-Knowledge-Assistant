@@ -126,7 +126,7 @@ class UserRepository:
         stmt = (
             select(User)
             .where(User.deleted_at.is_(None), User.is_active.is_(True))
-            .options(selectinload(User.roles))
+            .options(selectinload(User.roles).selectinload(Role.permissions))
             .order_by(User.created_at.desc())
             .limit(limit)
             .offset(offset)

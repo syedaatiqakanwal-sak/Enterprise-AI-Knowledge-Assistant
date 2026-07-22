@@ -313,14 +313,30 @@ def get_embedding_provider() -> EmbeddingProvider:
     Resolve embedding backend from settings (singleton per process).
 
     Order: configured provider → primary BGE → MiniLM fallback → mock.
+    ``EMBEDDING_PROVIDER`` env var wins over the cached Settings object so
+    tests can monkeypatch the provider without restarting the process.
     """
-    provider = (settings.EMBEDDING_PROVIDER or "bge").lower()
+    import os
+
+    provider = (
+        os.getenv("EMBEDDING_PROVIDER")
+        or settings.EMBEDDING_PROVIDER
+        or "bge"
+    ).lower().strip()
     if provider == "mock" or settings.is_testing:
         return MockEmbeddingProvider(dim=settings.EMBEDDING_DIM_MINILM)
 
     if provider == "minilm":
         try:
             model_name, dim, label = resolve_embedding_model_name("minilm")
+            # Prefer env EMBEDDING_MODEL when set (tests / runtime overrides)
+            env_model = os.getenv("EMBEDDING_MODEL")
+            if env_model:
+                if "/" not in env_model and not env_model.startswith(
+                    "sentence-transformers/"
+                ):
+                    env_model = f"sentence-transformers/{env_model}"
+                model_name = env_model
             return SentenceTransformerProvider(
                 model_name, dim, provider_label=label
             )
@@ -371,18 +387,7 @@ def get_embedding_status() -> dict[str, Any]:
         from app.ai.qdrant import get_qdrant_service
 
         qs = get_qdrant_service()
-        if qs.using_memory:
-            total_vectors = qs.memory_count()
-        elif qs._client is not None:  # noqa: SLF001 — status probe only
-            try:
-                info = qs._client.get_collection(settings.QDRANT_COLLECTION)
-                total_vectors = int(
-                    getattr(info, "points_count", None)
-                    or getattr(getattr(info, "points_count", None), "count", 0)
-                    or 0
-                )
-            except Exception:  # noqa: BLE001
-                total_vectors = None
+        total_vectors = qs.count_points()
     except Exception:  # noqa: BLE001
         total_vectors = None
 

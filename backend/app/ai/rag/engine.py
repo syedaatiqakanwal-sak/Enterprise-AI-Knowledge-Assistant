@@ -136,9 +136,7 @@ class RAGEngine:
         return citations, {
             "embedding_ms": round(embed_ms, 2),
             "retrieval_ms": round(retrieval_ms, 2),
-            "vector_points": float(self._qdrant.memory_count())
-            if self._qdrant.using_memory
-            else -1.0,
+            "vector_points": float(self._qdrant.count_points()),
         }
 
     def _format_context(self, citations: list[Citation]) -> str:

@@ -394,6 +394,20 @@ class QdrantService:
     def memory_count(self) -> int:
         return _MEMORY.count()
 
+    def count_points(self) -> int:
+        """Return active vector count (Qdrant collection or in-memory store)."""
+        if self._use_memory or self._client is None:
+            return _MEMORY.count()
+        try:
+            info = self._client.get_collection(settings.QDRANT_COLLECTION)
+            return int(
+                getattr(info, "points_count", None)
+                or getattr(info, "vectors_count", None)
+                or 0
+            )
+        except Exception:  # noqa: BLE001
+            return _MEMORY.count()
+
 
 def _merge_hits(
     primary: list[VectorHit],

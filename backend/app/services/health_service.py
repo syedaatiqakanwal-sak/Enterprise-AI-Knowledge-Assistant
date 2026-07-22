@@ -25,15 +25,20 @@ logger = logging.getLogger(__name__)
 
 
 async def _check_qdrant() -> bool:
+    """True only when a real Qdrant client is connected.
+
+    In-memory vector fallback keeps RAG usable locally, but must not be
+    reported as Qdrant ``up`` — that hid missing infra during readiness checks.
+    """
     try:
         from app.ai.qdrant.client import get_qdrant_service
 
         svc = get_qdrant_service()
-        # Prefer real client when connected; in-memory fallback counts as up for local
-        if getattr(svc, "_client", None) is not None:
-            svc._client.get_collections()
-            return True
-        return True  # in-memory / soft-fail mode still serves the process
+        client = getattr(svc, "_client", None)
+        if client is None or getattr(svc, "using_memory", True):
+            return False
+        client.get_collections()
+        return True
     except Exception as exc:  # noqa: BLE001
         logger.warning("Qdrant health check failed: %s", exc)
         return False

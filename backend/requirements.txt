@@ -38,6 +38,7 @@ colorlog==6.8.2
 
 # Observability (Module 12)
 prometheus-client==0.20.0
+psutil==6.0.0
 
 # Testing
 pytest==8.2.2
