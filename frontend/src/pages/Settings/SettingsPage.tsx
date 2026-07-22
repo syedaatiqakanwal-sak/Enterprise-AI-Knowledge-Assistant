@@ -19,7 +19,7 @@ import {
 import { authApi } from "@/services/api/auth";
 import { usersApi } from "@/services/api/auth";
 import { getErrorMessage } from "@/services/api/client";
-import { systemApi, type OllamaStatus } from "@/services/api/system";
+import { systemApi, type EmbeddingStatus, type OllamaStatus } from "@/services/api/system";
 import { useAuth, getErrorMessage as authErrorMessage } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeMode } from "@/types";
@@ -83,6 +83,9 @@ export function SettingsPage() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
+  const [embeddingStatus, setEmbeddingStatus] = useState<EmbeddingStatus | null>(
+    null,
+  );
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [ollamaLoading, setOllamaLoading] = useState(false);
@@ -93,10 +96,11 @@ export function SettingsPage() {
   const loadOllamaPanel = async () => {
     setOllamaLoading(true);
     try {
-      const [statusRes, modelsRes, llmRes] = await Promise.all([
+      const [statusRes, modelsRes, llmRes, embRes] = await Promise.all([
         systemApi.ollamaStatus(),
         systemApi.ollamaModels(),
         systemApi.llmInfo(),
+        systemApi.embeddingsStatus(),
       ]);
       if (statusRes.data.success && statusRes.data.data) {
         setOllamaStatus(statusRes.data.data);
@@ -118,6 +122,12 @@ export function SettingsPage() {
       if (llmRes.data.success && llmRes.data.data) {
         setLlmProvider(llmRes.data.data.llm_provider_setting);
         setEmbeddingProvider(llmRes.data.data.embedding_provider);
+      }
+      if (embRes.data.success && embRes.data.data) {
+        setEmbeddingStatus(embRes.data.data);
+        setEmbeddingProvider(
+          embRes.data.data.provider_setting || embRes.data.data.provider,
+        );
       }
     } catch (error) {
       toast.error(getErrorMessage(error) || "Failed to load Ollama status");
@@ -368,6 +378,75 @@ export function SettingsPage() {
                         ? "reachable"
                         : "unreachable"}
                   </Badge>
+                </div>
+
+                <div className="rounded-lg border border-border p-4 space-y-3">
+                  <h3 className="text-sm font-semibold">Embedding provider</h3>
+                  <div className="grid gap-3 text-sm sm:grid-cols-2">
+                    <div>
+                      <p className="text-muted-foreground">Provider</p>
+                      <p className="font-medium">
+                        {embeddingStatus?.provider || embeddingProvider || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Model</p>
+                      <p className="font-medium break-all">
+                        {embeddingStatus?.model || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Dimension</p>
+                      <p className="font-medium">
+                        {embeddingStatus?.dimension ?? "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Status</p>
+                      <p className="font-medium">
+                        {embeddingStatus?.loaded
+                          ? "loaded"
+                          : embeddingStatus?.error
+                            ? "error"
+                            : "not loaded"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Last loaded</p>
+                      <p className="font-medium">
+                        {embeddingStatus?.loaded_at
+                          ? new Date(embeddingStatus.loaded_at).toLocaleString()
+                          : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Memory</p>
+                      <p className="font-medium">
+                        {embeddingStatus?.memory_mb != null
+                          ? `${embeddingStatus.memory_mb} MB`
+                          : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Load time</p>
+                      <p className="font-medium">
+                        {embeddingStatus?.load_time_ms != null
+                          ? `${embeddingStatus.load_time_ms} ms`
+                          : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Vectors stored</p>
+                      <p className="font-medium">
+                        {embeddingStatus?.total_vectors ?? "—"}
+                      </p>
+                    </div>
+                  </div>
+                  {embeddingStatus?.error ? (
+                    <p className="text-sm text-destructive">
+                      {embeddingStatus.error}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="grid gap-3 text-sm sm:grid-cols-2">

@@ -70,6 +70,26 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             raise
         logger.warning("RBAC/tenancy seed skipped: %s", exc)
 
+    # Warm local embedding model once (MiniLM / BGE) — never blocks startup fatally in dev
+    try:
+        from app.ai.embeddings import warmup_embedding_provider
+
+        emb_status = warmup_embedding_provider()
+        logger.info(
+            "Embedding provider ready provider=%s model=%s dim=%s load_ms=%s",
+            emb_status.get("provider"),
+            emb_status.get("model"),
+            emb_status.get("dimension"),
+            emb_status.get("load_time_ms"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        if settings.is_production and (settings.EMBEDDING_PROVIDER or "").lower() not in {
+            "mock",
+            "",
+        }:
+            raise
+        logger.warning("Embedding warmup skipped: %s", exc)
+
     yield
 
     logger.info("Shutting down — closing infrastructure connections")

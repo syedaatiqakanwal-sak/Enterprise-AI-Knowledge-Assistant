@@ -7,6 +7,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from app.ai.embeddings import get_embedding_status
 from app.ai.llm.provider import (
     OllamaProvider,
     _model_in_installed,
@@ -46,6 +47,18 @@ async def llm_runtime_info(
 ) -> ApiResponse[dict[str, Any]]:
     """Lightweight config snapshot for Chat badges (no remote calls)."""
     return ApiResponse.ok(get_active_llm_info(), message="LLM runtime info")
+
+
+@router.get(
+    "/embeddings/status",
+    response_model=ApiResponse[dict[str, Any]],
+    summary="Embedding provider status (MiniLM / BGE / mock)",
+)
+async def embeddings_status(
+    _user: User = Depends(require_admin),
+) -> ApiResponse[dict[str, Any]]:
+    data = get_embedding_status()
+    return ApiResponse.ok(data, message="Embedding status")
 
 
 @router.get(

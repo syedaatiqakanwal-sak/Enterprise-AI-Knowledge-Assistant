@@ -25,9 +25,29 @@ export interface OllamaStatus {
   test_reply_preview?: string;
 }
 
+export interface EmbeddingStatus {
+  provider: string;
+  provider_setting?: string;
+  model: string;
+  dimension: number;
+  loaded: boolean;
+  cached: boolean;
+  cache_size?: number;
+  cache_hits?: number;
+  cache_misses?: number;
+  memory_mb: number | null;
+  load_time_ms: number | null;
+  loaded_at: string | null;
+  total_vectors?: number | null;
+  error: string | null;
+}
+
 export const systemApi = {
   llmInfo() {
     return api.get<ApiResponse<LlmRuntimeInfo>>("/system/llm");
+  },
+  embeddingsStatus() {
+    return api.get<ApiResponse<EmbeddingStatus>>("/system/embeddings/status");
   },
   ollamaStatus() {
     return api.get<ApiResponse<OllamaStatus>>("/system/ollama/status");

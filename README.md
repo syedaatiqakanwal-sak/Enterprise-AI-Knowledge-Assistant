@@ -15,6 +15,21 @@ docker compose -f docker-compose.dev.yml up --build
 - Frontend: http://localhost:3000  
 - Probes: `/live` · `/ready` · `/health` · `/metrics`
 
+### Local Ollama + MiniLM (optional, no cloud keys)
+
+For fully local RAG on Windows without Docker AI images:
+
+1. Install [Ollama](https://ollama.com) and run `ollama pull llama3.2`
+2. In `.env` set:
+   - `LLM_PROVIDER=ollama`
+   - `OLLAMA_MODEL=llama3.2`
+   - `EMBEDDING_PROVIDER=minilm`
+   - `EMBEDDING_MODEL=all-MiniLM-L6-v2`
+3. Backend: `pip install -r backend/requirements-ai.txt` then start uvicorn
+4. Admin → **Settings → AI / Ollama** to ping Ollama and view embedding status
+
+See [DeveloperGuide.md](docs/DeveloperGuide.md) for details.
+
 ## Environments
 
 | Env | Compose / Kustomize |
